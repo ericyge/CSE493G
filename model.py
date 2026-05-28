@@ -33,6 +33,7 @@ class ServeLSTM(nn.Module):
         num_classes: int = NUM_CLASSES,
         dropout: float = 0.2,
         bidirectional: bool = False,
+        use_layernorm: bool = False,
     ) -> None:
         super().__init__()
         self.input_size = input_size
@@ -40,6 +41,7 @@ class ServeLSTM(nn.Module):
         self.num_layers = num_layers
         self.num_classes = num_classes
         self.bidirectional = bidirectional
+        self.use_layernorm = use_layernorm
 
         self.lstm = nn.LSTM(
             input_size=input_size,
@@ -51,10 +53,16 @@ class ServeLSTM(nn.Module):
         )
 
         head_in = hidden_size * (2 if bidirectional else 1)
-        self.head = nn.Sequential(
-            nn.Dropout(dropout),
-            nn.Linear(head_in, num_classes),
+        head_layers: list[nn.Module] = []
+        if use_layernorm:
+            head_layers.append(nn.LayerNorm(head_in))
+        head_layers.extend(
+            [
+                nn.Dropout(dropout),
+                nn.Linear(head_in, num_classes),
+            ]
         )
+        self.head = nn.Sequential(*head_layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -98,6 +106,7 @@ def build_model(
     num_layers: int = 2,
     dropout: float = 0.2,
     bidirectional: bool = False,
+    use_layernorm: bool = False,
     device: torch.device | str | None = None,
 ) -> ServeLSTM:
     """Construct model and optionally move to device."""
@@ -106,6 +115,7 @@ def build_model(
         num_layers=num_layers,
         dropout=dropout,
         bidirectional=bidirectional,
+        use_layernorm=use_layernorm,
     )
     if device is not None:
         model = model.to(device)
