@@ -137,10 +137,6 @@ def run_training(
     downsample_seed: int = 42,
     manual_class_weights: list[float] | tuple[float, ...] | None = None,
     patience: int = 5,
-    use_lr_scheduler: bool = False,
-    lr_scheduler_patience: int = 3,
-    lr_scheduler_factor: float = 0.5,
-    lr_scheduler_min_lr: float = 1e-6,
     num_workers: int = 0,
     verbose: bool = True,
 ) -> dict:
@@ -158,10 +154,6 @@ def run_training(
     lr = float(lr)
     dropout = float(dropout)
     weight_decay = float(weight_decay)
-    lr_scheduler_patience = int(lr_scheduler_patience)
-    lr_scheduler_factor = float(lr_scheduler_factor)
-    lr_scheduler_min_lr = float(lr_scheduler_min_lr)
-    use_lr_scheduler = bool(use_lr_scheduler)
     if isinstance(use_layernorm, str):
         use_layernorm = use_layernorm.strip().lower() in {"1", "true", "yes", "y"}
     else:
@@ -231,27 +223,12 @@ def run_training(
         weight = None
     criterion = nn.CrossEntropyLoss(weight=weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
-    scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau | None = None
-    if use_lr_scheduler:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode="min",
-            factor=lr_scheduler_factor,
-            patience=lr_scheduler_patience,
-            min_lr=lr_scheduler_min_lr,
-        )
-        if verbose:
-            print(
-                f"LR scheduler: ReduceLROnPlateau(factor={lr_scheduler_factor}, "
-                f"patience={lr_scheduler_patience}, min_lr={lr_scheduler_min_lr})"
-            )
 
     history: dict[str, Any] = {
         "train_loss": [],
         "train_acc": [],
         "val_loss": [],
         "val_acc": [],
-        "lr": [],
         "params": {
             "batch_size": batch_size,
             "lr": lr,
@@ -265,10 +242,6 @@ def run_training(
             "use_downsampling": use_downsampling,
             "downsample_seed": downsample_seed,
             "manual_class_weights": list(manual_class_weights) if manual_class_weights is not None else None,
-            "use_lr_scheduler": use_lr_scheduler,
-            "lr_scheduler_patience": lr_scheduler_patience,
-            "lr_scheduler_factor": lr_scheduler_factor,
-            "lr_scheduler_min_lr": lr_scheduler_min_lr,
         },
     }
     best_val_loss = float("inf")
@@ -285,27 +258,13 @@ def run_training(
         history["train_acc"].append(train_acc)
         history["val_loss"].append(val_loss)
         history["val_acc"].append(val_acc)
-        current_lr = optimizer.param_groups[0]["lr"]
-        history["lr"].append(current_lr)
-
-        if scheduler is not None:
-            prev_lr = current_lr
-            scheduler.step(val_loss)
-            current_lr = optimizer.param_groups[0]["lr"]
-            history["lr"][-1] = current_lr
-            lr_reduced = current_lr < prev_lr
-        else:
-            lr_reduced = False
 
         if verbose:
             print(
                 f"Epoch {epoch:02d}/{epochs} | "
                 f"train loss {train_loss:.4f} acc {train_acc:.3f} | "
-                f"val loss {val_loss:.4f} acc {val_acc:.3f} | "
-                f"lr {current_lr:.2e}"
+                f"val loss {val_loss:.4f} acc {val_acc:.3f}"
             )
-            if lr_reduced:
-                print(f"  LR reduced (val loss plateau): {prev_lr:.2e} -> {current_lr:.2e}")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -365,10 +324,6 @@ def tune_hyperparameters(
     use_downsampling: bool = False,
     downsample_seed: int = 42,
     manual_class_weights: list[float] | tuple[float, ...] | None = None,
-    use_lr_scheduler: bool = False,
-    lr_scheduler_patience: int = 3,
-    lr_scheduler_factor: float = 0.5,
-    lr_scheduler_min_lr: float = 1e-6,
     verbose_trials: bool = True,
 ) -> pd.DataFrame:
     """
@@ -394,10 +349,6 @@ def tune_hyperparameters(
             use_downsampling=use_downsampling,
             downsample_seed=downsample_seed,
             manual_class_weights=manual_class_weights,
-            use_lr_scheduler=use_lr_scheduler,
-            lr_scheduler_patience=lr_scheduler_patience,
-            lr_scheduler_factor=lr_scheduler_factor,
-            lr_scheduler_min_lr=lr_scheduler_min_lr,
             verbose=verbose_trials,
             **params,
         )
